@@ -291,8 +291,10 @@ void zpmRTCInit(void) {
 ******************************************************************************/
 void zpmSleep(void) {
     SCB->SCR |=  SCB_SCR_SLEEPDEEP_Msk;
+    SysTick->CTRL &= ~SysTick_CTRL_TICKINT_Msk; //cth to fix hangs
     __DSB();
     __WFI();
+    SysTick->CTRL |= SysTick_CTRL_TICKINT_Msk;	//cth 
 }
 
 
