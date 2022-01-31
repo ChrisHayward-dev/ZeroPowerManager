@@ -44,10 +44,12 @@
 
  ******************************************************************************/
 
+
 #include  <stdint.h>
 #include  <samd.h>
 #include  <Arduino.h>
-#include  "ZeroPowerManager-cth.h"
+#include  "ZeroPowerManager.h"
+
 
 /******************************************************************************/
 /**************************** PORT CONFIGURATION ******************************
@@ -106,39 +108,31 @@ void  zpmPortDisableUSB(void) {
 
 /*******************************************************************************
 
-    void _configGCLK0(uint8_t source_clock, uint32_t division_factor)
+    void _configGCLK0(uint8_t source_clock)
 
-    Set Generic Clock Generator 0 to default values with source_clock
-    divided by division_factor.
+    Set Generic Clock Generator 0 to source_clock.
 
-    Default configuration values
-    config->division_factor    = 1;
-    config->high_when_disabled = false;
-    config->source_clock       = GCLK_SOURCE_OSC8M;
-    config->run_in_standby     = false;
-    config->output_enable      = false;
 
 ******************************************************************************/
-void _configGCLK0(uint8_t source_clock, uint32_t division_factor) {
-    struct system_gclk_gen_config config;
+void _configGCLK0(uint8_t source_clock) {
 
-    system_gclk_gen_get_config_defaults(&config);
-    config.division_factor = division_factor;
-    config.source_clock    = source_clock;
-    system_gclk_gen_set_config(0, &config);
+   GCLK->GENCTRL.reg = GCLK_GENCTRL_ID(0)                     |
+                       (source_clock << GCLK_GENCTRL_SRC_Pos) |
+                       GCLK_GENCTRL_IDC                       |
+                       GCLK_GENCTRL_GENEN ;
 }
 
 
 /*******************************************************************************
 
-    void _configGCLK_MAIN(uint8_t source_clock, uint32_t division_factor)
+    void _configGCLK_MAIN(uint8_t source_clock)
 
     Configure the CPU clock from the low frequency source_clk. Set flash
     wait states to 0 and disable DFLL48M.
 
 ******************************************************************************/
-void _configGCLK_MAIN(uint8_t source_clock, uint32_t division_factor) {
-    _configGCLK0(source_clock, 1);
+void _configGCLK_MAIN(uint8_t source_clock) {
+    _configGCLK0(source_clock);
     NVMCTRL->CTRLB.bit.RWS = NVMCTRL_CTRLB_RWS_SINGLE_Val;  // flash wait states = 0
     SYSCTRL->DFLLCTRL.reg  = 0;                             // disable DFLL48M
 }
@@ -157,7 +151,7 @@ void _configGCLK_MAIN(uint8_t source_clock, uint32_t division_factor) {
 
 ******************************************************************************/
 void zpmCPUClk8M(void) {
-    _configGCLK_MAIN(GCLK_SOURCE_OSC8M, 1);
+    _configGCLK_MAIN(GCLK_SOURCE_OSC8M);
 }
 
 
@@ -174,7 +168,7 @@ void zpmCPUClk8M(void) {
 
 ******************************************************************************/
 void zpmCPUClk32K(void) {
-    _configGCLK_MAIN(GCLK_SOURCE_XOSC32K, 1);
+    _configGCLK_MAIN(GCLK_SOURCE_XOSC32K);
 }
 
 
@@ -245,9 +239,9 @@ void zpmCPUClk48M(void) {
  *
  ******************************************************************************/
 
-volatile static uint32_t     _g_RTC_interrupt_interval = 0;    // for periodic interrupts
-volatile static voidFuncPtr  _g_RTC_callBack = NULL;           // RTC interrupt user handler
-volatile static bool         _g_f_playing_possum = false;      // flag set by ISR to release spin loop
+static volatile uint32_t     _g_RTC_interrupt_interval = 0;    // for periodic interrupts
+static volatile voidFuncPtr  _g_RTC_callBack = NULL;           // RTC interrupt user handler
+static volatile bool         _g_f_playing_possum = false;      // flag set by ISR to release spin loop
 
 
 /*******************************************************************************
@@ -295,15 +289,10 @@ void zpmRTCInit(void) {
     enough power to be worthwhile.
 
 ******************************************************************************/
-/*RAMFUNC __attribute__ */void zpmSleep(void) {
-	NVMCTRL->CTRLB.bit.SLEEPPRM = NVMCTRL_CTRLB_SLEEPPRM_DISABLED_Val; //cth - make sure FLASH does not pwoer all the way down in sleep
-	SysTick->CTRL &= ~SysTick_CTRL_TICKINT_Msk; //cth to fix hangs
+void zpmSleep(void) {
     SCB->SCR |=  SCB_SCR_SLEEPDEEP_Msk;
-	PM->SLEEP.reg = 2;						    //CTH idle mode
     __DSB();
     __WFI();
-//	__NOP;__NOP;__NOP;__NOP;__NOP;__NOP;__NOP;
-	SysTick->CTRL |= SysTick_CTRL_TICKINT_Msk;	//cth was restored in ISR
 }
 
 
@@ -421,20 +410,14 @@ void zpmRTCInterruptDisable(void) {
     to prevent another interrupt on timer rollover.
 
 ******************************************************************************/
-/*RAMFUNC __attribute__*/ void RTC_Handler(void)
+void RTC_Handler(void)
 {
-//	__NOP;__NOP;__NOP;__NOP;__NOP;__NOP;__NOP;
-//
-	uint32_t curTime;
     RTC->MODE0.INTFLAG.reg = RTC_MODE0_INTFLAG_MASK; // clear all interrupt sources
+
     if (_g_RTC_interrupt_interval != 0) {
-	while(RTC->MODE0.STATUS.bit.SYNCBUSY);							//cth
-	curTime = RTC->MODE0.COMP[0].reg;								//cth
-	RTC->MODE0.COMP[0].reg = curTime + _g_RTC_interrupt_interval;	//cth
-	while(RTC->MODE0.STATUS.bit.SYNCBUSY);							//cth
-	
- //       RTC->MODE0.COMP[0].reg = RTC->MODE0.COMP[0].reg + _g_RTC_interrupt_interval;
+        RTC->MODE0.COMP[0].reg = RTC->MODE0.COMP[0].reg + _g_RTC_interrupt_interval;
     }
+
     if (_g_RTC_interrupt_interval == 0) {
         zpmRTCInterruptDisable();
     }
@@ -447,12 +430,10 @@ void zpmRTCInterruptDisable(void) {
      * Putting the callback at the end of the handler allows the callback
      * to set a new or different interrupt.
      */
-	//SysTick->CTRL |= SysTick_CTRL_TICKINT_Msk; //cth to fix hangs - moved to main
     if (_g_RTC_callBack != NULL) { _g_RTC_callBack(); }
 
     _g_f_playing_possum = false;    // release fake sleep from spin loop
 }
-
 
 
 
