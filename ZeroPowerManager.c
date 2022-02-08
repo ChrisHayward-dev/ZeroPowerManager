@@ -291,7 +291,9 @@ void zpmRTCInit(void) {
 ******************************************************************************/
 void zpmSleep(void) {
     SCB->SCR |=  SCB_SCR_SLEEPDEEP_Msk;
+	NVMCTRL->CTRLB.bit.SLEEPPRM = NVMCTRL_CTRLB_SLEEPPRM_DISABLED_Val; //cth - make sure FLASH does not pwoer all the way down in sleep (no effect)
     SysTick->CTRL &= ~SysTick_CTRL_TICKINT_Msk; //cth to fix hangs
+	PM->SLEEP.reg = 2; //idle mode (no effect)
     __DSB();
     __WFI();
     SysTick->CTRL |= SysTick_CTRL_TICKINT_Msk;	//cth 
