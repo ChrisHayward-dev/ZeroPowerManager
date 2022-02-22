@@ -275,9 +275,11 @@ void zpmRTCInit(void) {
       // reset configuration is mode=0, no clear on match
       RTC->MODE0.CTRL.reg = RTC_MODE0_CTRL_PRESCALER_DIV32 | RTC_MODE0_CTRL_ENABLE;
 
-      NVIC_EnableIRQ(RTC_IRQn);
-      NVIC_SetPriority(RTC_IRQn, 0x00);
-
+      
+	  //reset the interrupt priority to 1 to coexist with FReeRTOS (see https://www.freertos.org/RTOS-Cortex-M3-M4.html)
+      NVIC_SetPriority(RTC_IRQn, 0x01);				//changed priority to 0x1
+	  NVIC_EnableIRQ(RTC_IRQn);
+	  
       zpmRTCSetClock(0); // reset to zero in case of warm start
 }
 
@@ -291,9 +293,9 @@ void zpmRTCInit(void) {
 ******************************************************************************/
 void zpmSleep(void) {
     SCB->SCR |=  SCB_SCR_SLEEPDEEP_Msk;
-	NVMCTRL->CTRLB.bit.SLEEPPRM = NVMCTRL_CTRLB_SLEEPPRM_DISABLED_Val; //cth - make sure FLASH does not pwoer all the way down in sleep (no effect)
+	//NVMCTRL->CTRLB.bit.SLEEPPRM = NVMCTRL_CTRLB_SLEEPPRM_DISABLED_Val; //cth - make sure FLASH does not pwoer all the way down in sleep (no effect)
     SysTick->CTRL &= ~SysTick_CTRL_TICKINT_Msk; //cth to fix hangs
-	PM->SLEEP.reg = 2; //idle mode (no effect)
+	//PM->SLEEP.reg = 2; //idle mode (no effect)
     __DSB();
     __WFI();
     SysTick->CTRL |= SysTick_CTRL_TICKINT_Msk;	//cth 
