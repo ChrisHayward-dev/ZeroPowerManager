@@ -298,6 +298,7 @@ void zpmSleep(void) {
 	//PM->SLEEP.reg = 2; //idle mode (no effect)
     __DSB();
     __WFI();
+	delayMicroseconds(4);
     SysTick->CTRL |= SysTick_CTRL_TICKINT_Msk;	//cth 
 }
 
