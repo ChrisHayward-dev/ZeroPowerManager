@@ -261,7 +261,8 @@ static volatile bool         _g_f_playing_possum = false;      // flag set by IS
 
 ******************************************************************************/
 void zpmRTCInit(void) {
-
+		NVMCTRL->CTRLB.bit.SLEEPPRM = 3; //must be 3 to make sure it will power up (may want this in init)IErrata 1.14.2)
+		
       // keep the XOSC32K running in standy
       SYSCTRL->XOSC32K.reg |= SYSCTRL_XOSC32K_RUNSTDBY;
 
@@ -275,9 +276,11 @@ void zpmRTCInit(void) {
       // reset configuration is mode=0, no clear on match
       RTC->MODE0.CTRL.reg = RTC_MODE0_CTRL_PRESCALER_DIV32 | RTC_MODE0_CTRL_ENABLE;
 
-      
-	  //reset the interrupt priority to 1 to coexist with FReeRTOS (see https://www.freertos.org/RTOS-Cortex-M3-M4.html)
-      NVIC_SetPriority(RTC_IRQn, 0x01);				//changed priority to 0x1
+      RTC->MODE0.READREQ.reg = RTC_READREQ_RREQ;	//cth set continuous sync on COUNT
+	  while(RTC->MODE0.STATUS.bit.SYNCBUSY);
+	  
+	  //reset the interrupt priority to 0 
+      NVIC_SetPriority(RTC_IRQn, 0x00);				
 	  NVIC_EnableIRQ(RTC_IRQn);
 	  
       zpmRTCSetClock(0); // reset to zero in case of warm start
@@ -293,12 +296,10 @@ void zpmRTCInit(void) {
 ******************************************************************************/
 void zpmSleep(void) {
     SCB->SCR |=  SCB_SCR_SLEEPDEEP_Msk;
-	NVMCTRL->CTRLB.bit.SLEEPPRM = NVMCTRL_CTRLB_SLEEPPRM_DISABLED_Val; //cth - make sure FLASH does not pwoer all the way down in sleep (no effect)
     SysTick->CTRL &= ~SysTick_CTRL_TICKINT_Msk; //cth to fix hangs
 	//PM->SLEEP.reg = 2; //idle mode (no effect)
     __DSB();
     __WFI();
-	delayMicroseconds(4);
     SysTick->CTRL |= SysTick_CTRL_TICKINT_Msk;	//cth 
 }
 
@@ -420,7 +421,7 @@ void zpmRTCInterruptDisable(void) {
 void RTC_Handler(void)
 {
     RTC->MODE0.INTFLAG.reg = RTC_MODE0_INTFLAG_MASK; // clear all interrupt sources
-
+	
     if (_g_RTC_interrupt_interval != 0) {
         RTC->MODE0.COMP[0].reg = RTC->MODE0.COMP[0].reg + _g_RTC_interrupt_interval;
     }
