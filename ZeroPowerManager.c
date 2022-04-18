@@ -301,6 +301,7 @@ void zpmSleep(void) {
     __DSB();
     __WFI();
     SysTick->CTRL |= SysTick_CTRL_TICKINT_Msk;	//cth 
+	SCB->SCR &=  ~SCB_SCR_SLEEPDEEP_Msk;        //cth turn off the deepsleep
 }
 
 
